@@ -1,4 +1,4 @@
-const CACHE = 'loyalin-dasbor-v1';
+const CACHE = 'loyalin-dasbor-v2';
 const SHELL = [
   './',
   'index.html',
