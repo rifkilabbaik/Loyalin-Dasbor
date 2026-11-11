@@ -66,6 +66,8 @@
       <symbol id="i-ban" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></g></symbol>
       <symbol id="i-user" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></g></symbol>
       <symbol id="i-hash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" d="M5 9h15M4 15h15M10 3L8 21M16 3l-2 18"/></symbol>
+      <symbol id="i-stamp" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 12.5V9.6a3.6 3.6 0 1 1 5 0v2.9"/><path d="M4.5 12.5h15a1.5 1.5 0 0 1 1.5 1.5v3H3v-3a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M5 21h14"/></g></symbol>
+      <symbol id="i-gift" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="5" rx="1.5"/><path d="M5 13v6.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V13M12 8v13"/><path d="M12 8c-1.6-3.2-5-3.6-5-1.5S9.8 8 12 8zM12 8c1.6-3.2 5-3.6 5-1.5S14.2 8 12 8z"/></g></symbol>
       <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></symbol>
     </defs>
   </svg>
@@ -136,7 +138,7 @@
           </div>
           <div class="tiles">
             <div class="tile"><span class="tile-ic"><svg class="ic"><use href="#i-receipt"/></svg></span><div class="tile-val" id="tTx"></div><span class="tile-lab">Transaksi</span><span class="delta" id="tTxD"></span></div>
-            <div class="tile"><span class="tile-ic sun"><svg class="ic"><use href="#i-star"/></svg></span><div class="tile-val" id="tPts"></div><span class="tile-lab">Poin</span><span class="delta" id="tPtsD"></span></div>
+            <div class="tile"><span class="tile-ic sun"><svg class="ic"><use href="#i-gift"/></svg></span><div class="tile-val" id="tGift"></div><span class="tile-lab">Hadiah</span><span class="delta" id="tGiftD"></span></div>
             <div class="tile"><span class="tile-ic"><svg class="ic"><use href="#i-user-plus"/></svg></span><div class="tile-val" id="tNew"></div><span class="tile-lab">Member baru</span><span class="delta" id="tNewD"></span></div>
             <div class="tile"><span class="tile-ic"><svg class="ic"><use href="#i-pulse"/></svg></span><div class="tile-val" id="tAct"></div><span class="tile-lab">Member aktif</span><span class="delta" id="tActD"></span></div>
           </div>
@@ -166,7 +168,7 @@
       <section class="view" data-view="members">
         <div class="field search"><svg class="ic"><use href="#i-search"/></svg><input id="mQ" type="search" placeholder="Nama, ID, No. HP" autocomplete="off" enterkeyhint="search" /></div>
         <div class="seg seg-scroll" id="mSort">
-          <button data-sort="points" class="on"><svg class="ic"><use href="#i-star"/></svg><span>Poin</span></button>
+          <button data-sort="stamps" class="on"><svg class="ic"><use href="#i-stamp"/></svg><span>Stamp</span></button>
           <button data-sort="spent"><svg class="ic"><use href="#i-trophy"/></svg><span>Belanja</span></button>
           <button data-sort="new"><svg class="ic"><use href="#i-sparkle"/></svg><span>Baru</span></button>
           <button data-sort="idle"><svg class="ic"><use href="#i-moon-z"/></svg><span>Pasif</span></button>
@@ -186,11 +188,7 @@
               <div class="who-phone"><svg class="ic"><use href="#i-phone"/></svg><span id="dPhone"></span></div>
             </div>
           </div>
-          <div class="hero-points">
-            <span class="pts-star"><svg class="ic"><use href="#i-star"/></svg></span>
-            <span class="pts-num" id="dPoints">0</span>
-            <span class="pts-unit">poin</span>
-          </div>
+          <div class="hero-card" id="dCard"></div>
         </div>
         <div class="detail-side">
           <div class="mini-grid">

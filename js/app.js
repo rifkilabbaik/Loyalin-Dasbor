@@ -111,17 +111,18 @@ const Api = {
 };
 
 const Data = {
-  members: [], tx: [], byId: new Map(), byKey: new Map(), toko: [], rpp: 1000, batas: 0, at: 0, first: 0, hours: [8, 21],
+  members: [], tx: [], byId: new Map(), byKey: new Map(), toko: [], min: 13000, slots: 10, batas: 0, at: 0, first: 0, hours: [8, 21],
 
   load(raw) {
-    this.rpp = Number(raw.rpp) || 1000;
+    this.min = Number(raw.min) || 13000;
+    this.slots = Math.min(30, Math.max(2, Number(raw.slots) || 10));
     this.batas = Number(raw.batas) || 0;
     this.at = Number(raw.now) || Date.now();
     this.members = (raw.members || []).map(r => this.toMember(r));
     this.byId = new Map(this.members.map(m => [m.id, m]));
     this.tx = (raw.tx || []).map(r => ({
       at: +r[0] || 0, id: String(r[1]), type: String(r[2] || 'Belanja'),
-      amount: +r[3] || 0, points: +r[4] || 0, balance: +r[5] || 0, store: String(r[6] || ''),
+      amount: +r[3] || 0, stamps: +r[4] || 0, balance: +r[5] || 0, store: String(r[6] || ''),
       name: String(r[7] || ''), row: +r[8] || 0
     })).filter(t => t.at).sort((a, b) => b.at - a.at);
     this.byKey = new Map();
@@ -140,7 +141,7 @@ const Data = {
   toMember(r) {
     return {
       id: String(r[0]), name: String(r[1] || ''), phone: String(r[2] || ''),
-      points: +r[3] || 0, spent: +r[4] || 0, count: +r[5] || 0, store: String(r[6] || ''),
+      stamps: +r[3] || 0, spent: +r[4] || 0, count: +r[5] || 0, store: String(r[6] || ''),
       createdAt: +r[7] || 0, lastAt: +r[8] || 0
     };
   },
@@ -157,7 +158,35 @@ const Data = {
   member(id) { return this.byId.get(id); },
   nameOf(t) { const m = this.byId.get(t.id); return (m && m.name) || t.name || t.id; },
   isSale(t) { return String(t.type).toLowerCase() === 'belanja'; },
-  isVoid(t) { return String(t.type).toLowerCase() === 'batal'; }
+  isVoid(t) { return String(t.type).toLowerCase() === 'batal'; },
+  isGift(t) { return this.isSale(t) && t.balance > 0 && t.balance % this.slots === 0; }
+};
+
+const Stamp = {
+  ROT: [-12, 9, -6, 14, -9, 5, -14, 11, -4, 12, -8, 6],
+  prog(total) {
+    const slots = Data.slots;
+    total = Math.max(0, Math.floor(Number(total) || 0));
+    if (!total) return { filled: 0, full: 0, slots };
+    const r = total % slots;
+    return r ? { filled: r, full: Math.floor(total / slots), slots } : { filled: slots, full: total / slots, slots };
+  },
+  label(total) { const p = this.prog(total); return p.filled + '/' + p.slots; },
+  cols(n) { return n <= 6 ? n : n <= 12 ? Math.ceil(n / 2) : 6; },
+  card(total) {
+    const p = this.prog(total);
+    let cells = '';
+    for (let i = 0; i < p.slots; i++) {
+      const gift = i === p.slots - 1;
+      cells += `<span class="slot${i < p.filled ? ' on' : ''}${gift ? ' gift' : ''}" style="--r:${this.ROT[i % 12]}deg;--i:${i}"><span class="ink">${ic(gift ? 'gift' : 'star')}</span>${gift ? ic('gift') : `<i>${i + 1}</i>`}</span>`;
+    }
+    return `<div class="scard stagger"><div class="scard-head"><span class="scard-count">${ic('stamp')}<b>${p.filled}</b><small>/${p.slots}</small></span><span class="scard-gift"${p.full ? '' : ' hidden'}>${ic('gift')}<b>×${p.full}</b></span></div><div class="scard-grid" style="--cols:${this.cols(p.slots)}">${cells}</div></div>`;
+  },
+  chips(total) {
+    const p = this.prog(total);
+    const done = p.filled === p.slots;
+    return `<span class="chips"><span class="pt${done ? '' : ' soft'}">${ic(done ? 'gift' : 'star')}${p.filled}/${p.slots}</span>${p.full && !done ? `<span class="pt">${ic('gift')}×${p.full}</span>` : ''}</span>`;
+  }
 };
 
 const PERIODS = [['today', 'Hari ini'], ['7', '7 hari'], ['30', '30 hari'], ['month', 'Bulan ini'], ['90', '90 hari'], ['all', 'Semua']];
@@ -179,10 +208,11 @@ function rangeOf(p) {
 }
 
 function sum(list) {
-  const o = { omzet: 0, n: 0, pts: 0, ids: new Set() };
+  const o = { omzet: 0, n: 0, gifts: 0, ids: new Set() };
   list.forEach(t => {
     if (!Data.isSale(t)) return;
-    o.omzet += t.amount; o.n++; o.pts += Math.max(0, t.points); o.ids.add(t.id);
+    o.omzet += t.amount; o.n++; o.ids.add(t.id);
+    if (Data.isGift(t)) o.gifts++;
   });
   return o;
 }
@@ -308,7 +338,7 @@ const PAGE = 40;
 
 const App = {
   view: '', period: Store.get('period') || '7', toko: Store.get('tokoFilter') || '',
-  sort: 'points', mq: '', tq: '', memberId: '', installEvt: null, menus: [], syncing: false, timer: 0,
+  sort: 'stamps', mq: '', tq: '', memberId: '', installEvt: null, menus: [], syncing: false, timer: 0,
 
   init() {
     this.mPeriod = new Menu($('#ddPeriod'), { icon: 'calendar', onChange: (v) => { this.period = v; Store.set('period', v); this.render(); } });
@@ -537,9 +567,9 @@ const App = {
     om.innerHTML = `<small>Rp</small>${a.omzet >= 1e9 ? F.short(a.omzet) : fmt(a.omzet)}`;
     this.setDelta($('#hOmzetD'), hasPrev ? delta(a.omzet, p.omzet) : null);
     $('#tTx').textContent = F.count(a.n);
-    $('#tPts').textContent = F.count(a.pts);
+    $('#tGift').textContent = F.count(a.gifts);
     this.setDelta($('#tTxD'), hasPrev ? delta(a.n, p.n) : null);
-    this.setDelta($('#tPtsD'), hasPrev ? delta(a.pts, p.pts) : null);
+    this.setDelta($('#tGiftD'), hasPrev ? delta(a.gifts, p.gifts) : null);
     const inMs = (m) => !this.toko || m.store === this.toko;
     const nNew = Data.members.filter(m => m.createdAt >= r.from && m.createdAt < r.to && inMs(m)).length;
     const pNew = hasPrev ? Data.members.filter(m => m.createdAt >= r.pFrom && m.createdAt < r.pTo && inMs(m)).length : 0;
@@ -577,17 +607,17 @@ const App = {
     const per = new Map();
     cur.forEach(t => {
       if (!Data.isSale(t)) return;
-      const o = per.get(t.id) || { id: t.id, name: t.name, v: 0, n: 0, pts: 0 };
-      o.v += t.amount; o.n++; o.pts += t.points;
+      const o = per.get(t.id) || { id: t.id, name: t.name, v: 0, n: 0 };
+      o.v += t.amount; o.n++;
       per.set(t.id, o);
     });
     const top = Array.from(per.values()).sort((x, y) => y.v - x.v).slice(0, 5);
     $('#topList').innerHTML = top.length ? top.map((o, i) => {
-      const m = Data.member(o.id) || { name: o.name || o.id };
+      const m = Data.member(o.id) || { name: o.name || o.id, stamps: 0 };
       return `<button class="row" data-id="${esc(o.id)}">
         <span class="av medal" data-rank="${i + 1}">${esc(F.initial(m.name))}</span>
         <span class="row-main"><span class="row-t">${esc(m.name)}</span><span class="row-s">${ic('receipt')}<span>${fmt(o.n)}×</span></span></span>
-        <span class="row-end"><span class="row-amt">${F.rps(o.v)}</span><span class="pt">${ic('star')}+${fmt(o.pts)}</span></span>
+        <span class="row-end"><span class="row-amt">${F.rps(o.v)}</span>${Stamp.chips(m.stamps)}</span>
       </button>`;
     }).join('') : this.emptyRow('users');
 
@@ -647,8 +677,11 @@ const App = {
   emptyRow(icon) { return `<div class="empty-state"><span>${ic(icon)}</span></div>`; },
 
   ptPill(t) {
-    if (Data.isVoid(t)) return `<span class="pt void">${ic('ban')}${fmt(t.points)}</span>`;
-    return t.points >= 0 ? `<span class="pt">${ic('star')}+${fmt(t.points)}</span>` : `<span class="pt soft">${ic('star')}${fmt(t.points)}</span>`;
+    if (Data.isVoid(t)) return `<span class="pt void">${ic('ban')}Batal</span>`;
+    if (t.stamps < 0) return `<span class="pt soft">${ic('gift')}${fmt(t.stamps)}</span>`;
+    if (!Data.isSale(t)) return '';
+    if (Data.isGift(t)) return `<span class="pt">${ic('gift')}${Stamp.label(t.balance)}</span>`;
+    return `<span class="pt soft">${ic('star')}${Stamp.label(t.balance)}</span>`;
   },
 
   txRow(t, compact) {
@@ -675,23 +708,23 @@ const App = {
     if (s === 'idle') list = list.filter(m => (m.lastAt || m.createdAt) < idleAt).sort((a, b) => (a.lastAt || a.createdAt) - (b.lastAt || b.createdAt));
     else if (s === 'spent') list = list.slice().sort((a, b) => b.spent - a.spent);
     else if (s === 'new') list = list.slice().sort((a, b) => b.createdAt - a.createdAt);
-    else list = list.slice().sort((a, b) => b.points - a.points);
+    else list = list.slice().sort((a, b) => b.stamps - a.stamps || b.spent - a.spent);
     return list;
   },
 
   renderMembers() {
     $$('#mSort button').forEach(b => b.classList.toggle('on', b.dataset.sort === this.sort));
     const list = this.memberRows();
-    const pts = list.reduce((x, m) => x + m.points, 0);
-    $('#mSum').innerHTML = `<span class="pill">${ic('users')}${fmt(list.length)}</span><span class="pill sun">${ic('star')}${F.count(pts)}</span>${this.dl}`;
+    const gifts = list.reduce((x, m) => x + Stamp.prog(m.stamps).full, 0);
+    $('#mSum').innerHTML = `<span class="pill">${ic('users')}${fmt(list.length)}</span><span class="pill sun">${ic('gift')}${F.count(gifts)}</span>${this.dl}`;
     const el = $('#memberList');
     const s = this.sort;
     const row = (m) => {
       let end;
       if (s === 'spent') end = `<span class="row-amt">${F.rps(m.spent)}</span><span class="pt soft">${ic('receipt')}${fmt(m.count)}×</span>`;
-      else if (s === 'new') end = `<span class="row-amt">${F.date(m.createdAt)}</span><span class="pt">${ic('star')}${fmt(m.points)}</span>`;
-      else if (s === 'idle') end = `<span class="row-amt">${esc(F.ago(m.lastAt || m.createdAt))}</span><span class="pt">${ic('star')}${fmt(m.points)}</span>`;
-      else end = `<span class="pt">${ic('star')}${fmt(m.points)}</span><span class="row-amt">${F.rps(m.spent)}</span>`;
+      else if (s === 'new') end = `<span class="row-amt">${F.date(m.createdAt)}</span>${Stamp.chips(m.stamps)}`;
+      else if (s === 'idle') end = `<span class="row-amt">${esc(F.ago(m.lastAt || m.createdAt))}</span>${Stamp.chips(m.stamps)}`;
+      else end = `${Stamp.chips(m.stamps)}<span class="row-amt">${F.rps(m.spent)}</span>`;
       const sub = `${ic('phone')}<span>${esc(Phone.display(m.phone))}</span>`;
       return `<button class="row" data-id="${esc(m.id)}"><span class="av">${esc(F.initial(m.name))}</span><span class="row-main"><span class="row-t">${esc(m.name)}</span><span class="row-s">${sub}</span></span><span class="row-end">${end}</span></button>`;
     };
@@ -723,7 +756,7 @@ const App = {
     $('#dInitial').textContent = F.initial(m.name);
     $('#dName').textContent = m.name;
     $('#dPhone').textContent = Phone.display(m.phone);
-    $('#dPoints').textContent = fmt(m.points);
+    $('#dCard').innerHTML = Stamp.card(m.stamps);
     $('#dSpent').textContent = F.rps(m.spent);
     $('#dCount').textContent = fmt(m.count);
     $('#dAvg').textContent = m.count ? F.rps(m.spent / m.count) : '–';
@@ -761,7 +794,7 @@ const App = {
   renderTx() {
     const list = this.txRowsFiltered();
     const a = sum(list);
-    $('#txSum').innerHTML = `<span class="pill">${ic('receipt')}${fmt(a.n)}</span><span class="pill">${F.rp(a.omzet)}</span><span class="pill sun">${ic('star')}${F.count(a.pts)}</span>${this.dl}`;
+    $('#txSum').innerHTML = `<span class="pill">${ic('receipt')}${fmt(a.n)}</span><span class="pill">${F.rp(a.omzet)}</span><span class="pill sun">${ic('gift')}${F.count(a.gifts)}</span>${this.dl}`;
     const el = $('#txList');
     if (this._io) this._io.disconnect();
     if (!list.length) { el.innerHTML = this.emptyRow('receipt'); return; }
@@ -812,12 +845,12 @@ const App = {
     const dt = (t) => { if (!t) return ''; const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + F.time(t).replace('.', ':'); };
     let rows, name;
     if (this.view === 'members') {
-      rows = [['ID', 'Nama', 'No HP', 'Poin', 'Total Belanja', 'Jumlah Transaksi', 'Toko Daftar', 'Terdaftar', 'Terakhir Belanja'].map(q).join(',')];
-      this.memberRows().forEach(m => rows.push([txt(m.id), q(m.name), txt(m.phone), m.points, m.spent, m.count, q(m.store), q(dt(m.createdAt)), q(dt(m.lastAt))].join(',')));
+      rows = [['ID', 'Nama', 'No HP', 'Stamp', 'Total Belanja', 'Jumlah Transaksi', 'Toko Daftar', 'Terdaftar', 'Terakhir Belanja'].map(q).join(',')];
+      this.memberRows().forEach(m => rows.push([txt(m.id), q(m.name), txt(m.phone), m.stamps, m.spent, m.count, q(m.store), q(dt(m.createdAt)), q(dt(m.lastAt))].join(',')));
       name = 'member';
     } else {
-      rows = [['Waktu', 'ID', 'Nama', 'No HP', 'Jenis', 'Belanja', 'Poin', 'Saldo Poin', 'Toko'].map(q).join(',')];
-      this.txRowsFiltered().forEach(t => { const m = Data.member(t.id) || {}; rows.push([q(dt(t.at)), txt(t.id), q(Data.nameOf(t)), txt(m.phone || ''), q(t.type), t.amount, t.points, t.balance, q(t.store)].join(',')); });
+      rows = [['Waktu', 'ID', 'Nama', 'No HP', 'Jenis', 'Belanja', 'Stamp', 'Saldo Stamp', 'Toko'].map(q).join(',')];
+      this.txRowsFiltered().forEach(t => { const m = Data.member(t.id) || {}; rows.push([q(dt(t.at)), txt(t.id), q(Data.nameOf(t)), txt(m.phone || ''), q(t.type), t.amount, t.stamps, t.balance, q(t.store)].join(',')); });
       name = 'transaksi';
     }
     const blob = new Blob(['﻿' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -886,7 +919,7 @@ const App = {
   memberBox(m) {
     return `<div class="c-row">${ic('user')}<span class="c-val">${esc(m.name)}</span></div>
       <div class="c-row">${ic('hash')}<span class="c-val">${esc(m.id)}</span><span class="c-sub">${esc(Phone.display(m.phone))}</span></div>
-      <div class="c-row">${ic('star')}<span class="c-val">${fmt(m.points)}</span><span class="c-sub">${F.rps(m.spent)}</span></div>`;
+      <div class="c-row">${ic('stamp')}<span class="c-val">${Stamp.chips(m.stamps)}</span><span class="c-sub">${F.rps(m.spent)}</span></div>`;
   },
 
   async openTx(k, fromList) {
@@ -904,7 +937,7 @@ const App = {
     if (r !== 'yes') return;
     const ok = await this.confirm({
       icon: 'alert', bad: true, title: 'Batalkan transaksi?', rows: box,
-      warn: m ? `${fmt(m.points)} → ${fmt(m.points - t.points)} poin` : '',
+      warn: m && t.stamps ? `Stamp ${Stamp.label(m.stamps)} → ${Stamp.label(m.stamps - t.stamps)}` : '',
       no: { t: 'Tidak' }, yes: { t: 'Ya, batalkan', ic: 'ban', cls: 'btn-bad' }
     });
     if (ok !== 'yes') return;
@@ -965,7 +998,7 @@ const App = {
     this.closeSheet();
     const ok = await this.confirm({
       icon: 'trash', bad: true, title: 'Hapus member?', rows: this.memberBox(m),
-      warn: `${fmt(m.points)} poin ikut terhapus`,
+      warn: m.stamps ? `${fmt(m.stamps)} stamp ikut terhapus` : '',
       no: { t: 'Tidak' }, yes: { t: 'Ya, hapus', ic: 'trash', cls: 'btn-bad' }
     });
     if (ok !== 'yes') return;
